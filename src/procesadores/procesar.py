@@ -18,17 +18,15 @@ def procesar_archivos(archivos, fecha_inicio, fecha_fin, progress, root):
     for i, ruta_archivo in enumerate(archivos):
         try:
             hoja = pd.read_excel(ruta_archivo, sheet_name="ANALISIS")
+            hoja.columns = hoja.columns.str.strip().str.upper()  # Normalizar nombres de columnas
             columnas_existentes = [col for col in columnas_requeridas if col in hoja.columns]
             df_filtrado = hoja[columnas_existentes]
             
-            # Añadir columna con el nombre del archivo
             df_filtrado["Nombre_Archivo"] = os.path.basename(ruta_archivo)
-            
             df_estandarizado = pd.concat([df_estandarizado, df_filtrado], ignore_index=True)
         except Exception as e:
             messagebox.showerror("Error", f"Error al leer el archivo {ruta_archivo}: {e}")
         
-        # Actualizar la barra de progreso
         progress["value"] = (i + 1) / len(archivos) * 100
         root.update_idletasks()
 
@@ -39,16 +37,32 @@ def procesar_archivos(archivos, fecha_inicio, fecha_fin, progress, root):
     if ruta_rep10:
         try:
             df_rep10 = pd.read_excel(ruta_rep10, sheet_name="R123")
-            df_rep10 = df_rep10[["Cuenta", "RESULTADO_AC", "FEC_TRABAJO","INSTRUCCIONES","MOTIVO_AC"]]
-            df_final = pd.merge(df_estandarizado, df_rep10, on="Cuenta", how="left")
-            df_final['FEC_TRABAJO'] = pd.to_datetime(df_final['FEC_TRABAJO'], errors='coerce')
+            df_rep10.columns = df_rep10.columns.str.strip().str.upper()  # Normalizar nombres de columnas
             
-            # Filtrar por el rango de fechas seleccionado
+            # Verificar si las columnas necesarias están presentes
+            print("Columnas en REP 10 después de normalizar:", df_rep10.columns.tolist())  # <-- Verificación de columnas normalizadas
+            
+            # Asegurarse de que la columna 'FEC_TRABAJO' esté en el DataFrame
+            if 'FEC_TRABAJO' not in df_rep10.columns:
+                raise KeyError("La columna 'FEC_TRABAJO' no está en REP 10 después de la normalización")
+            
+            # Forzar la conversión a datetime
+            df_rep10['FEC_TRABAJO'] = pd.to_datetime(df_rep10['FEC_TRABAJO'], errors='coerce')
+            
+            # Filtrar y procesar el archivo final
+            columnas_necesarias_rep10 = ["CUENTA", "RESULTADO_AC", "FEC_TRABAJO", "INSTRUCCIONES", "MOTIVO_AC"]
+            df_rep10 = df_rep10[columnas_necesarias_rep10]
+            df_final = pd.merge(df_estandarizado, df_rep10, left_on="Cuenta", right_on="CUENTA", how="left")
+            
+            # Eliminar columnas duplicadas y renombrar para unificar nombres
+            df_final.drop(columns=['FEC_TRABAJO_x', 'RESULTADO_AC_x'], inplace=True)
+            df_final.rename(columns={'FEC_TRABAJO_y': 'FEC_TRABAJO', 'RESULTADO_AC_y': 'RESULTADO_AC'}, inplace=True)
+
+            # Filtrar por fechas y condiciones especificadas
             fecha_inicio = pd.to_datetime(fecha_inicio)
             fecha_fin = pd.to_datetime(fecha_fin)
             df_final = df_final[(df_final['FEC_TRABAJO'] >= fecha_inicio) & (df_final['FEC_TRABAJO'] <= fecha_fin)]
             
-            # Aplicar otros filtros y guardar el archivo final
             df_final = df_final[df_final['MOTIVO_AC'] == 'DIRECCIONAMIENTO']
             df_final = df_final[df_final['RESULTADO_AC'] != '#N/D']
             df_final = df_final.dropna(subset=['RESULTADO_AC'])
@@ -57,5 +71,7 @@ def procesar_archivos(archivos, fecha_inicio, fecha_fin, progress, root):
             if output_path:
                 df_final.to_excel(output_path, index=False)
                 messagebox.showinfo("Éxito", f"Procesamiento completo. Archivo guardado en {output_path}")
+        except KeyError as e:
+            messagebox.showerror("Error", f"Error al procesar REP 10: {e}")
         except Exception as e:
             messagebox.showerror("Error", f"Error al procesar REP 10: {e}")

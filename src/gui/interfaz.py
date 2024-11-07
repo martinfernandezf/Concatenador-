@@ -3,7 +3,7 @@ from tkcalendar import DateEntry
 from tkinter import ttk
 import os
 import pandas as pd
-from src.procesadores.procesar import procesar_archivos
+from procesadores.procesar import procesar_archivos
 from tkinter import messagebox
 from tkinter import filedialog
 
